@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "lastUpdated": "2026-10-08T19:27:57.508Z",
+  "idempotencyEntries": [],
+  "inventory": [
+    {
+      "sku": "COLD_BREW_01",
+      "name": "Cold Brew 16oz",
+      "price": 4.5,
+      "stock": 12,
+      "reorderThreshold": 2,
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "sku": "CROISSANT_02",
+      "name": "Artisan Croissant",
+      "price": 3.75,
+      "stock": 8,
+      "reorderThreshold": 2,
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "sku": "ORGANIC_OAT_03",
+      "name": "Organic Oat Milk Latte",
+      "price": 5.25,
+      "stock": 10,
+      "reorderThreshold": 2,
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "sku": "LIMITED_EDITION_MUG",
+      "name": "Limited Ceramic Mug",
+      "price": 18,
+      "stock": 1,
+      "reorderThreshold": 1,
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "knownEventIds": [],
+  "discrepancies": [],
+  "serverHLC": {
+    "millis": 0,
+    "counter": 0,
+    "nodeId": "SERVER_CLOUD_AUTHORITY"
+  }
+}

@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { NexusCentralReconciler } from '@/lib/sync/reconciler';
-import { SyncPushRequest, SyncPushResponse } from '@/types/events';
+import { SyncPushRequest, SyncPushResponse, InventoryItem } from '@/types/events';
+import {
+  loadServerLedger,
+  saveServerLedger,
+  getDefaultLedgerPath,
+  PersistedServerLedger,
+} from '@/lib/sync/server-storage';
 
-// In-memory idempotency transaction ledger across API requests
-const idempotencyLedger = new Map<string, { response: SyncPushResponse; processedAt: string }>();
-
-// Authoritative central reconciler instance for cloud gateway
-const serverReconciler = new NexusCentralReconciler('SERVER_CLOUD_AUTHORITY', [
+const DEFAULT_CATALOG: InventoryItem[] = [
   {
     sku: 'COLD_BREW_01',
     name: 'Cold Brew 16oz',
@@ -39,19 +41,85 @@ const serverReconciler = new NexusCentralReconciler('SERVER_CLOUD_AUTHORITY', [
     reorderThreshold: 1,
     updatedAt: '2026-01-01T00:00:00.000Z',
   },
-]);
+];
+
+// Persistent file-backed store with in-memory fast cache
+export const idempotencyLedger = new Map<string, { response: SyncPushResponse; processedAt: string }>();
+export const serverReconciler = new NexusCentralReconciler('SERVER_CLOUD_AUTHORITY', DEFAULT_CATALOG);
+
+let isLedgerInitialized = false;
+
+/**
+ * Loads persisted ledger state from disk (.nexus_ledger.json).
+ * Preserves authoritative inventory counters and processed idempotency keys across server reboots.
+ */
+export function syncLedgerFromDisk(customPath?: string): void {
+  const persisted = loadServerLedger(customPath);
+  if (persisted) {
+    serverReconciler.restoreState({
+      knownEventIds: persisted.knownEventIds,
+      inventory: persisted.inventory,
+      discrepancyAuditLog: persisted.discrepancies,
+      serverClock: persisted.serverHLC,
+    });
+    idempotencyLedger.clear();
+    for (const entry of persisted.idempotencyEntries) {
+      idempotencyLedger.set(entry.key, {
+        response: entry.response,
+        processedAt: entry.processedAt,
+      });
+    }
+  } else {
+    // Initial bootstrap: persist baseline catalog to disk
+    syncLedgerToDisk(customPath);
+  }
+  isLedgerInitialized = true;
+}
+
+/**
+ * Commits current authoritative inventory and idempotency transactions to disk.
+ */
+export function syncLedgerToDisk(customPath?: string): boolean {
+  const state = serverReconciler.exportState();
+  const payload: PersistedServerLedger = {
+    version: 1,
+    lastUpdated: new Date().toISOString(),
+    idempotencyEntries: Array.from(idempotencyLedger.entries()).map(([key, val]) => ({
+      key,
+      response: val.response,
+      processedAt: val.processedAt,
+    })),
+    inventory: state.inventory,
+    knownEventIds: state.knownEventIds,
+    discrepancies: state.discrepancyAuditLog,
+    serverHLC: state.serverClock,
+  };
+  return saveServerLedger(payload, customPath);
+}
+
+// Initial bootstrap load from disk
+try {
+  syncLedgerFromDisk();
+} catch (e) {
+  console.warn('[API /api/sync] Ledger initialization notice:', e);
+}
 
 /**
  * POST /api/sync
- * Enterprise Idempotent Sync Push Gateway
+ * Enterprise Idempotent Sync Push Gateway with Persistent Storage
  *
  * Guarantees:
  * - Immediate deduplication via idempotencyKey.
  * - Prevents double deduction of inventory on repeated network retries.
+ * - Preserves transactions & inventory across server restarts or container reboots.
  * - Returns cached response with HTTP 200 and X-Cache-Lookup: HIT.
  */
 export async function POST(req: NextRequest) {
   try {
+    if (!isLedgerInitialized) {
+      syncLedgerFromDisk();
+    }
+
     const body = (await req.json()) as SyncPushRequest;
     const idempotencyKey = body.idempotencyKey || req.headers.get('x-idempotency-key') || '';
 
@@ -76,6 +144,7 @@ export async function POST(req: NextRequest) {
           headers: {
             'X-Cache-Lookup': 'HIT',
             'X-Idempotency-Key': idempotencyKey,
+            'X-Storage-Backend': 'FILE_PERSISTED',
           },
         }
       );
@@ -90,11 +159,15 @@ export async function POST(req: NextRequest) {
       processedAt: new Date().toISOString(),
     });
 
+    // 4. Persist updated authoritative state to disk (.nexus_ledger.json)
+    syncLedgerToDisk();
+
     return NextResponse.json(response, {
       status: 200,
       headers: {
         'X-Cache-Lookup': 'MISS',
         'X-Idempotency-Key': idempotencyKey,
+        'X-Storage-Backend': 'FILE_PERSISTED',
       },
     });
   } catch (err: unknown) {
@@ -108,9 +181,13 @@ export async function POST(req: NextRequest) {
 
 /**
  * GET /api/sync
- * Inspect gateway health, authoritative stock matrix, and idempotency ledger metrics
+ * Inspect gateway health, authoritative stock matrix, persistent storage metrics, and idempotency ledger
  */
 export async function GET() {
+  if (!isLedgerInitialized) {
+    syncLedgerFromDisk();
+  }
+
   const inventory = Array.from(serverReconciler.getAllInventory().values());
   const discrepancies = serverReconciler.getDiscrepancies();
 
@@ -122,6 +199,8 @@ export async function GET() {
       cachedIdempotencyKeys: idempotencyLedger.size,
       totalInventorySkus: inventory.length,
       discrepanciesFlagged: discrepancies.length,
+      storageEngine: 'FILE_BACKED_JSON',
+      storageFile: getDefaultLedgerPath(),
     },
     inventory,
     discrepancies,

@@ -480,6 +480,23 @@ export class NexusClientDatabase extends Dexie {
   }
 
   /**
+   * Retrieves all recorded domain events (supporting in-memory fallback).
+   */
+  async getAllEvents(): Promise<NexusEvent[]> {
+    try {
+      if (this.isFallbackMode) return [...this.fallbackEvents];
+      const evts = await this.events.toArray();
+      return evts.length > 0 ? evts : [...this.fallbackEvents];
+    } catch {
+      return [...this.fallbackEvents];
+    }
+  }
+
+  async getEvents(): Promise<NexusEvent[]> {
+    return this.getAllEvents();
+  }
+
+  /**
    * Retrieves pending events waiting in outbox queue.
    */
   async getPendingOutbox(): Promise<OutboxRecord[]> {

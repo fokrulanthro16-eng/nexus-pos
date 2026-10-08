@@ -141,6 +141,11 @@ export class BackgroundSyncWorker {
     if (!this.isRunning || this.isSyncing) return null;
     if (!this.isOnline) return null;
 
+    if (this.backoffTimerId) {
+      clearTimeout(this.backoffTimerId);
+      this.backoffTimerId = null;
+    }
+
     this.isSyncing = true;
     this.notifyState();
 
@@ -165,12 +170,43 @@ export class BackgroundSyncWorker {
       const response = await this.options.pushHandler(request);
 
       if (response && response.success) {
-        // Authoritative confirmation: advance causal clock & mark outbox as synced
+        // Authoritative confirmation: advance causal clock
         this.clock.update(response.serverHLC);
-        await this.db.markOutboxSynced(response.acceptedEventIds as string[]);
 
-        this.retryAttempt = 0;
-        this.lastError = null;
+        // Fine-Grained Batch Ack: Read acceptedEventIds and only purge acknowledged events
+        const acceptedIds = (response.acceptedEventIds || []) as string[];
+        const duplicateIds = (response.duplicateEventIds || []) as string[];
+        const acknowledgedIds = Array.from(new Set([...acceptedIds, ...duplicateIds]));
+
+        if (acknowledgedIds.length > 0) {
+          await this.db.markOutboxSynced(acknowledgedIds);
+        }
+
+        // Check if unacknowledged/failed events remain in the outbox queue
+        const remainingPending = await this.db.getPendingOutbox();
+        if (remainingPending.length > 0) {
+          // Partial batch recovery: unacknowledged events remain queued for exponential jitter retry
+          this.retryAttempt += 1;
+          this.lastError = `Partial batch ack: ${acknowledgedIds.length}/${pending.length} accepted. ${remainingPending.length} unacknowledged events pending retry.`;
+
+          for (const item of remainingPending) {
+            if (item.id !== undefined) {
+              await this.db.recordOutboxFailure(item.id, 'Unacknowledged in batch push - queued for retry');
+            }
+          }
+
+          if (this.retryAttempt <= this.options.maxRetries) {
+            const delay = this.calculateBackoff(this.retryAttempt - 1);
+            this.backoffTimerId = setTimeout(() => {
+              this.flush();
+            }, delay);
+          }
+        } else {
+          // Complete batch acknowledgment
+          this.retryAttempt = 0;
+          this.lastError = null;
+        }
+
         this.lastSyncAt = new Date().toISOString();
         this.isSyncing = false;
         this.notifyState();
@@ -218,6 +254,9 @@ export class BackgroundSyncWorker {
   private scheduleNextTick(delayMs: number): void {
     if (!this.isRunning) return;
     if (this.timerId) clearTimeout(this.timerId);
+
+    // If backoff retry is already active, don't preempt with periodic tick
+    if (this.backoffTimerId) return;
 
     this.timerId = setTimeout(() => {
       this.flush();

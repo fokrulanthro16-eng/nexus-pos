@@ -243,4 +243,49 @@ export class NexusCentralReconciler {
   public getServerClock(): HybridLogicalClock {
     return this.serverClock;
   }
+
+  /**
+   * Serializes internal state for persistent storage across server restarts
+   */
+  public exportState(): {
+    knownEventIds: string[];
+    inventory: InventoryItem[];
+    discrepancyAuditLog: DiscrepancyPayload[];
+    serverClock: HLCTimestamp;
+  } {
+    return {
+      knownEventIds: Array.from(this.knownEventIds),
+      inventory: Array.from(this.inventory.values()),
+      discrepancyAuditLog: [...this.discrepancyAuditLog],
+      serverClock: this.serverClock.peek(),
+    };
+  }
+
+  /**
+   * Restores state from persistent storage
+   */
+  public restoreState(state: {
+    knownEventIds?: string[];
+    inventory?: InventoryItem[];
+    discrepancyAuditLog?: DiscrepancyPayload[];
+    serverClock?: HLCTimestamp;
+  }): void {
+    if (state.knownEventIds) {
+      for (const id of state.knownEventIds) {
+        this.knownEventIds.add(id);
+      }
+    }
+    if (state.inventory) {
+      for (const item of state.inventory) {
+        this.inventory.set(item.sku, { ...item });
+      }
+    }
+    if (state.discrepancyAuditLog) {
+      this.discrepancyAuditLog.length = 0;
+      this.discrepancyAuditLog.push(...state.discrepancyAuditLog);
+    }
+    if (state.serverClock) {
+      this.serverClock.update(state.serverClock);
+    }
+  }
 }
