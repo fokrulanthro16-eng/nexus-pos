@@ -6,11 +6,13 @@ import {
   StockAdjustedEvent,
   InventoryItem,
   OutboxRecord,
+  InventorySnapshot,
   SalePayload,
   InventoryPayload,
   StockAdjustedPayload,
 } from '@/types/events';
 import { HybridLogicalClock } from '@/lib/hlc';
+import { signEvent } from '@/lib/crypto/signer';
 
 function generateUUID(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -29,6 +31,7 @@ function generateUUID(): string {
  * 1. Immutable append-only domain event log (`events`)
  * 2. Instant zero-latency materialized inventory view (`inventory`)
  * 3. Durable offline-first sync queue with retry telemetry (`outbox`)
+ * 4. Periodic materialized state snapshots (`snapshots`)
  *
  * Includes an automatic in-memory fallback store to guarantee uninterrupted operation
  * if IndexedDB is blocked, slow, or running in restricted browser modes.
@@ -37,12 +40,14 @@ export class NexusClientDatabase extends Dexie {
   events!: Table<NexusEvent, string>;
   inventory!: Table<InventoryItem, string>;
   outbox!: Table<OutboxRecord, number>;
+  snapshots!: Table<InventorySnapshot, string>;
 
   private isOpenResolved = false;
   private isFallbackMode = false;
   private fallbackInventory: Map<string, InventoryItem> = new Map();
   private fallbackEvents: NexusEvent[] = [];
   private fallbackOutbox: OutboxRecord[] = [];
+  private fallbackSnapshots: InventorySnapshot[] = [];
 
   constructor(dbName = 'NexusPOS_Client_DB') {
     super(dbName);
@@ -54,6 +59,8 @@ export class NexusClientDatabase extends Dexie {
       inventory: 'sku, stock, reorderThreshold, name',
       // Primary key autoincrement id, indexed by eventId, idempotencyKey, attempts, createdAt
       outbox: '++id, eventId, idempotencyKey, attempts, createdAt',
+      // Primary key snapshotId, indexed by terminalId, hlc.millis, createdAt
+      snapshots: 'snapshotId, terminalId, hlc.millis, createdAt',
     });
   }
 
@@ -97,7 +104,7 @@ export class NexusClientDatabase extends Dexie {
     const hlc = clock.now();
     const nowIso = new Date().toISOString();
 
-    const saleEvent: SaleCommittedEvent = {
+    const rawSaleEvent: SaleCommittedEvent = {
       eventId,
       type: 'SALE_COMMITTED',
       payload: salePayload,
@@ -107,6 +114,8 @@ export class NexusClientDatabase extends Dexie {
       synced: false,
       createdAt: nowIso,
     };
+
+    const saleEvent = (await signEvent(rawSaleEvent, terminalId)) as SaleCommittedEvent;
 
     const outboxRecord: OutboxRecord = {
       eventId,
@@ -188,7 +197,7 @@ export class NexusClientDatabase extends Dexie {
     const hlc = clock.now();
     const nowIso = new Date().toISOString();
 
-    const event: InventoryInitializedEvent = {
+    const rawEvent: InventoryInitializedEvent = {
       eventId,
       type: 'INVENTORY_INITIALIZED',
       payload,
@@ -198,6 +207,8 @@ export class NexusClientDatabase extends Dexie {
       synced: false,
       createdAt: nowIso,
     };
+
+    const event = (await signEvent(rawEvent, terminalId)) as InventoryInitializedEvent;
 
     const item: InventoryItem = {
       sku: payload.sku,
@@ -556,6 +567,80 @@ export class NexusClientDatabase extends Dexie {
         match.lastError = errorMessage;
       }
     }
+  }
+
+  /**
+   * Persists an authoritative inventory snapshot.
+   */
+  async saveSnapshot(snapshot: InventorySnapshot): Promise<void> {
+    try {
+      if (this.isFallbackMode) throw new Error('Fallback mode active');
+      await this.snapshots.put(snapshot);
+    } catch {
+      this.fallbackSnapshots.push(snapshot);
+    }
+  }
+
+  /**
+   * Retrieves the most recent inventory snapshot.
+   */
+  async getLatestSnapshot(): Promise<InventorySnapshot | null> {
+    try {
+      if (this.isFallbackMode) {
+        return this.fallbackSnapshots[this.fallbackSnapshots.length - 1] ?? null;
+      }
+      const all = await this.snapshots.toArray();
+      return all.length > 0 ? all[all.length - 1] : (this.fallbackSnapshots[this.fallbackSnapshots.length - 1] ?? null);
+    } catch {
+      return this.fallbackSnapshots[this.fallbackSnapshots.length - 1] ?? null;
+    }
+  }
+
+  /**
+   * Prunes synced events from active event log to reclaim storage.
+   */
+  async pruneSyncedEvents(eventIdsToPrune: string[]): Promise<number> {
+    let prunedCount = 0;
+    try {
+      if (this.isFallbackMode) throw new Error('Fallback mode active');
+      await this.transaction('rw', this.events, async () => {
+        for (const id of eventIdsToPrune) {
+          const evt = await this.events.get(id);
+          if (evt && evt.synced) {
+            await this.events.delete(id);
+            prunedCount++;
+          }
+        }
+      });
+    } catch {
+      const idSet = new Set(eventIdsToPrune);
+      const before = this.fallbackEvents.length;
+      this.fallbackEvents = this.fallbackEvents.filter((e) => !(idSet.has(e.eventId) && e.synced));
+      prunedCount = before - this.fallbackEvents.length;
+    }
+    return prunedCount;
+  }
+
+  /**
+   * Purges acknowledged items from outbox.
+   */
+  async purgeSyncedOutbox(): Promise<number> {
+    let purgedCount = 0;
+    try {
+      if (this.isFallbackMode) throw new Error('Fallback mode active');
+      const all = await this.outbox.toArray();
+      for (const item of all) {
+        if (item.event?.synced && item.id !== undefined) {
+          await this.outbox.delete(item.id);
+          purgedCount++;
+        }
+      }
+    } catch {
+      const before = this.fallbackOutbox.length;
+      this.fallbackOutbox = this.fallbackOutbox.filter((o) => !o.event?.synced);
+      purgedCount = before - this.fallbackOutbox.length;
+    }
+    return purgedCount;
   }
 
   /**

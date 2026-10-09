@@ -1,15 +1,35 @@
 {
   "version": 1,
-  "lastUpdated": "2026-10-08T19:27:57.508Z",
-  "idempotencyEntries": [],
+  "lastUpdated": "2026-10-09T04:42:02.079Z",
+  "idempotencyEntries": [
+    {
+      "key": "idem_tamper_test_1791520922070",
+      "response": {
+        "idempotencyKey": "idem_tamper_test_1791520922070",
+        "acceptedEventIds": [
+          "evt_tamper_guard_1791520922069"
+        ],
+        "duplicateEventIds": [],
+        "discrepancies": [],
+        "serverHLC": {
+          "millis": 1791520922079,
+          "counter": 0,
+          "nodeId": "SERVER_CLOUD_AUTHORITY"
+        },
+        "success": true,
+        "message": "Reconciled 1 events (0 duplicates). Flagged 0 discrepancies."
+      },
+      "processedAt": "2026-10-09T04:42:02.079Z"
+    }
+  ],
   "inventory": [
     {
       "sku": "COLD_BREW_01",
       "name": "Cold Brew 16oz",
       "price": 4.5,
-      "stock": 12,
+      "stock": 11,
       "reorderThreshold": 2,
-      "updatedAt": "2026-01-01T00:00:00.000Z"
+      "updatedAt": "2026-10-09T04:42:02.069Z"
     },
     {
       "sku": "CROISSANT_02",
@@ -36,10 +56,12 @@
       "updatedAt": "2026-01-01T00:00:00.000Z"
     }
   ],
-  "knownEventIds": [],
+  "knownEventIds": [
+    "evt_tamper_guard_1791520922069"
+  ],
   "discrepancies": [],
   "serverHLC": {
-    "millis": 0,
+    "millis": 1791520922079,
     "counter": 0,
     "nodeId": "SERVER_CLOUD_AUTHORITY"
   }

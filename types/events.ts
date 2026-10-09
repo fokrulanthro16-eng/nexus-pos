@@ -88,6 +88,8 @@ export interface BaseEvent<TType extends EventType, TPayload> {
   readonly version: number;
   readonly synced: boolean;
   readonly createdAt: string;
+  readonly signature?: string;
+  readonly publicKey?: string;
 }
 
 export type SaleCommittedEvent = BaseEvent<'SALE_COMMITTED', SalePayload>;
@@ -115,7 +117,18 @@ export interface InventoryItem {
   stock: number;
   reorderThreshold: number;
   category?: string;
+  allowOfflineOversell?: boolean;
   updatedAt: string;
+}
+
+export interface InventorySnapshot {
+  snapshotId: string;
+  terminalId: string;
+  hlc: HLCTimestamp;
+  inventory: InventoryItem[];
+  eventsCoveredCount: number;
+  lastEventId: string;
+  createdAt: string;
 }
 
 export interface OutboxRecord {

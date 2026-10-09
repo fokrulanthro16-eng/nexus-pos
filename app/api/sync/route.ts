@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { NexusCentralReconciler } from '@/lib/sync/reconciler';
 import { SyncPushRequest, SyncPushResponse, InventoryItem } from '@/types/events';
+import { verifyEventSignature } from '@/lib/crypto/signer';
 import {
   loadServerLedger,
   saveServerLedger,
@@ -150,10 +151,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Authoritative Reconciler Execution
+    // 2. Cryptographic Non-Repudiation Guard: Verify event signatures
+    if (body.events && body.events.length > 0) {
+      for (const event of body.events) {
+        const hasSignature = Boolean(
+          event.signature || (event.payload as Record<string, unknown>)?.signature
+        );
+        if (hasSignature) {
+          const isValid = await verifyEventSignature(event);
+          if (!isValid) {
+            return NextResponse.json(
+              {
+                success: false,
+                error: 'TAMPERED_EVENT',
+                message: `Cryptographic signature verification failed for event ${event.eventId}. The payload has been tampered with or signature is invalid.`,
+                tamperedEventId: event.eventId,
+              },
+              { status: 403 }
+            );
+          }
+        }
+      }
+    }
+
+    // 3. Authoritative Reconciler Execution
     const response = serverReconciler.handleSyncPush(body);
 
-    // 3. Commit to server transaction ledger
+    // 4. Commit to server transaction ledger
     idempotencyLedger.set(idempotencyKey, {
       response,
       processedAt: new Date().toISOString(),

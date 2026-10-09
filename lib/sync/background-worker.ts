@@ -1,6 +1,7 @@
 import { NexusClientDatabase } from '@/lib/db/client-db';
 import { HybridLogicalClock } from '@/lib/hlc';
 import { SyncPushRequest, SyncPushResponse } from '@/types/events';
+import { defaultCompactor } from '@/lib/storage/compactor';
 
 export interface SyncWorkerState {
   isOnline: boolean;
@@ -205,6 +206,13 @@ export class BackgroundSyncWorker {
           // Complete batch acknowledgment
           this.retryAttempt = 0;
           this.lastError = null;
+
+          // Periodically compact synced events & purge acknowledged outbox records
+          try {
+            await defaultCompactor.checkAndCompact(this.db, this.clock, this.terminalId);
+          } catch (compactionErr) {
+            console.warn(`[BackgroundSyncWorker] Compaction error on ${this.terminalId}:`, compactionErr);
+          }
         }
 
         this.lastSyncAt = new Date().toISOString();

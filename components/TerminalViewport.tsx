@@ -23,10 +23,13 @@ import {
   Award,
   Activity,
   CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
 import { offlineSmartSearch } from '@/lib/ai/local-search';
 import { NexusClientDatabase } from '@/lib/db/client-db';
 import { HybridLogicalClock } from '@/lib/hlc';
+import { evaluateOversellPolicy, STRICT_OVERSELL_REJECTION_MESSAGE } from '@/lib/policy/oversell-rules';
+import { defaultCompactor } from '@/lib/storage/compactor';
 import {
   CartItem,
   SalePayload,
@@ -124,6 +127,15 @@ export function TerminalViewport({
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [lastSaleId, setLastSaleId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [policyToast, setPolicyToast] = useState<{ message: string; sku: string } | null>(null);
+
+  // Auto-dismiss policy alert toast after 5 seconds
+  useEffect(() => {
+    if (policyToast) {
+      const timer = setTimeout(() => setPolicyToast(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [policyToast]);
 
   // Offline AI Smart Search: Instant in-memory fuzzy, Levenshtein & phonetic matcher
   const searchResults = useMemo(() => {
@@ -220,6 +232,14 @@ export function TerminalViewport({
       if (response.success) {
         clock.update(response.serverHLC);
         await db.markOutboxSynced(response.acceptedEventIds as string[]);
+
+        // Compactor: Periodically snapshot and prune acknowledged events
+        try {
+          await defaultCompactor.checkAndCompact(db, clock, terminalId);
+        } catch (compactionErr) {
+          console.warn(`[${terminalId}] Compactor notice:`, compactionErr);
+        }
+
         setLastSyncTime(new Date().toISOString());
         await refreshLocalState();
       }
@@ -230,10 +250,21 @@ export function TerminalViewport({
     }
   }, [db, clock, terminalId, networkState, onSyncPush, refreshLocalState]);
 
-  // Cart operations
+  // Cart operations with Business Policy Oversell Guard
   const addToCart = (item: InventoryItem) => {
+    const existing = cart.find((i) => i.sku === item.sku);
+    const targetQty = (existing?.quantity || 0) + 1;
+    const policyResult = evaluateOversellPolicy(item.sku, item.stock, targetQty);
+
+    if (!policyResult.allowed) {
+      setPolicyToast({
+        message: policyResult.reason || STRICT_OVERSELL_REJECTION_MESSAGE,
+        sku: item.sku,
+      });
+      return;
+    }
+
     setCart((prev) => {
-      const existing = prev.find((i) => i.sku === item.sku);
       if (existing) {
         return prev.map((i) =>
           i.sku === item.sku
@@ -255,6 +286,21 @@ export function TerminalViewport({
   };
 
   const updateCartQuantity = (sku: string, delta: number) => {
+    if (delta > 0) {
+      const item = inventory.find((i) => i.sku === sku);
+      const inCart = cart.find((i) => i.sku === sku);
+      if (item && inCart) {
+        const policyResult = evaluateOversellPolicy(sku, item.stock, inCart.quantity + delta);
+        if (!policyResult.allowed) {
+          setPolicyToast({
+            message: policyResult.reason || STRICT_OVERSELL_REJECTION_MESSAGE,
+            sku,
+          });
+          return;
+        }
+      }
+    }
+
     setCart((prev) => {
       return prev
         .map((item) => {
@@ -335,6 +381,15 @@ export function TerminalViewport({
       const item = inventory.find((i) => i.sku === sku);
       if (!item) return null;
 
+      const policyResult = evaluateOversellPolicy(item.sku, item.stock, quantity);
+      if (!policyResult.allowed) {
+        setPolicyToast({
+          message: policyResult.reason || STRICT_OVERSELL_REJECTION_MESSAGE,
+          sku: item.sku,
+        });
+        return null;
+      }
+
       const tStart = performance.now();
       const saleId = `auto_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
       const subtotal = item.price * quantity;
@@ -412,7 +467,36 @@ export function TerminalViewport({
   const badgeGlow = isCyan ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30' : 'bg-purple-500/10 text-purple-300 border-purple-500/30';
 
   return (
-    <div className={`flex flex-col h-full bg-[#090d16] border ${borderClass} rounded-2xl overflow-hidden transition-all duration-300`}>
+    <div className={`relative flex flex-col h-full bg-[#090d16] border ${borderClass} rounded-2xl overflow-hidden transition-all duration-300`}>
+      {/* Business Policy Allocation Guard Toast */}
+      {policyToast && (
+        <div className="absolute top-14 left-4 right-4 z-50 p-3.5 rounded-xl bg-rose-950/95 border border-rose-500/60 shadow-[0_0_25px_rgba(244,63,94,0.35)] backdrop-blur-md flex items-start gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="p-1.5 rounded-lg bg-rose-500/20 border border-rose-500/40 shrink-0">
+            <AlertTriangle className="w-4 h-4 text-rose-300" />
+          </div>
+          <div className="flex-1 text-xs">
+            <div className="font-bold text-rose-200 flex items-center justify-between">
+              <span>Inventory Allocation Policy Alert</span>
+              <button
+                type="button"
+                onClick={() => setPolicyToast(null)}
+                className="text-rose-400 hover:text-white p-0.5 rounded transition"
+                title="Dismiss Alert"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <p className="mt-1 text-rose-300/90 leading-relaxed font-sans">{policyToast.message}</p>
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-black/50 text-rose-300 border border-rose-500/30">
+                SKU: {policyToast.sku}
+              </span>
+              <span className="text-[10px] text-zinc-400 font-sans">Offline Oversell: RESTRICTED</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 1. Terminal Header */}
       <div className={`px-4 py-3 flex items-center justify-between ${headerGradient}`}>
         <div className="flex items-center gap-2.5">
