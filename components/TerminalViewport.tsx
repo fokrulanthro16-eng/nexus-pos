@@ -22,7 +22,6 @@ import {
   CupSoda,
   Award,
   Activity,
-  CheckCircle2,
   AlertTriangle,
 } from 'lucide-react';
 import { offlineSmartSearch } from '@/lib/ai/local-search';

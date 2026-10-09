@@ -3,7 +3,6 @@ import {
   offlineSmartSearch,
   phoneticNormalize,
   levenshteinDistance,
-  scoreProductMatch,
 } from '../lib/ai/local-search';
 import { OfflineDiscrepancyAuditor } from '../lib/ai/audit-agent';
 import { DiscrepancyPayload } from '../types/events';

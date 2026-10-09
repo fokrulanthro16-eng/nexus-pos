@@ -1,15 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { NextRequest } from 'next/server';
 import {
   signEvent,
   verifyEventSignature,
-  getOrGenerateTerminalKeyPair,
   getCanonicalEventBytes,
 } from '../lib/crypto/signer';
 import {
   evaluateOversellPolicy,
   isOversellAllowed,
-  SKU_OVERSELL_POLICIES,
   STRICT_OVERSELL_REJECTION_MESSAGE,
 } from '../lib/policy/oversell-rules';
 import { EventLogCompactor } from '../lib/storage/compactor';
@@ -88,7 +86,7 @@ describe('Enterprise Level-3 Fortification Suite', () => {
       const tamperedEvent: NexusEvent = {
         ...signedEvent,
         payload: {
-          ...(signedEvent.payload as any),
+          ...(signedEvent.payload as SalePayload),
           total: 90.0,
           items: [{ sku: 'LIMITED_EDITION_MUG', name: 'Limited Ceramic Mug', price: 18.0, quantity: 5, subtotal: 90.0 }],
         },
@@ -134,7 +132,7 @@ describe('Enterprise Level-3 Fortification Suite', () => {
       const tampered: NexusEvent = {
         ...signed,
         payload: {
-          ...(signed.payload as any),
+          ...(signed.payload as SalePayload),
           total: 999.99, // tampered amount
         },
       };

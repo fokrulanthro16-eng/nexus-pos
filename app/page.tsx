@@ -15,13 +15,11 @@ import {
   CheckCircle2,
   Sparkles,
   Cpu,
-  Wifi,
   Database,
   TrendingUp,
   Quote,
   ShieldCheck,
   Radio,
-  Activity,
   Check,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -147,26 +145,20 @@ export default function NexusPOSDemoPage() {
     hasBootstrappedRef.current = true;
 
     let isMounted = true;
-    const safetyTimer = setTimeout(() => {
-      if (isMounted) {
+    const bootstrapTimer = setTimeout(() => {
+      if (!isMounted) return;
+      try {
+        refreshServerState();
+      } catch (err) {
+        console.warn('[NexusPOS] Bootstrap sequence notice:', err);
+      } finally {
         setIsBootstrapping(false);
       }
-    }, 1500);
-
-    try {
-      refreshServerState();
-    } catch (err) {
-      console.warn('[NexusPOS] Bootstrap sequence notice:', err);
-    } finally {
-      if (isMounted) {
-        clearTimeout(safetyTimer);
-        setIsBootstrapping(false);
-      }
-    }
+    }, 0);
 
     return () => {
       isMounted = false;
-      clearTimeout(safetyTimer);
+      clearTimeout(bootstrapTimer);
     };
   }, [refreshServerState]);
 

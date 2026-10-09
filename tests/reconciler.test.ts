@@ -3,7 +3,6 @@ import { NexusCentralReconciler } from '@/lib/sync/reconciler';
 import {
   SaleCommittedEvent,
   InventoryInitializedEvent,
-  NexusEvent,
   SyncPushRequest,
 } from '@/types/events';
 import { HybridLogicalClock } from '@/lib/hlc';

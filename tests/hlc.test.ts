@@ -29,7 +29,7 @@ describe('Hybrid Logical Clock (HLC)', () => {
   });
 
   it('advances causally when updating with remote timestamp ahead in logical time', () => {
-    let mockTime = 1000;
+    const mockTime = 1000;
     const clockA = new HybridLogicalClock('term_A', {
       getPhysicalTime: () => mockTime,
     });
