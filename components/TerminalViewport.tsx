@@ -555,9 +555,9 @@ export function TerminalViewport({
                           </div>
                         </div>
 
-                        {/* Price in Taka ৳ */}
+                        {/* Price in USD $ */}
                         <span className="font-mono text-xs font-extrabold text-white shrink-0">
-                          ৳{item.price.toFixed(2)}
+                          ${item.price.toFixed(2)}
                         </span>
                       </div>
 
@@ -665,7 +665,7 @@ export function TerminalViewport({
                   <div className="flex flex-col truncate pr-2">
                     <span className="font-medium text-zinc-200 truncate">{item.name}</span>
                     <span className="text-[10px] font-mono text-zinc-400">
-                      ৳{item.price.toFixed(2)} each
+                      ${item.price.toFixed(2)} each
                     </span>
                   </div>
 
@@ -688,7 +688,7 @@ export function TerminalViewport({
                       </button>
                     </div>
                     <span className="font-mono font-bold text-zinc-100 min-w-14 text-right">
-                      ৳{item.subtotal.toFixed(2)}
+                      ${item.subtotal.toFixed(2)}
                     </span>
                   </div>
                 </div>
@@ -701,16 +701,16 @@ export function TerminalViewport({
             <div className="space-y-1 text-xs">
               <div className="flex justify-between text-zinc-400 text-[11px]">
                 <span>Subtotal</span>
-                <span className="font-mono">৳{cartSubtotal.toFixed(2)}</span>
+                <span className="font-mono">${cartSubtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-zinc-400 text-[11px]">
                 <span>Tax (8.25%)</span>
-                <span className="font-mono">৳{cartTax.toFixed(2)}</span>
+                <span className="font-mono">${cartTax.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-zinc-100 font-bold text-sm pt-1 border-t border-white/10">
                 <span>Total Due</span>
                 <span className="font-mono text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.4)]">
-                  ৳{cartTotal.toFixed(2)}
+                  ${cartTotal.toFixed(2)}
                 </span>
               </div>
             </div>

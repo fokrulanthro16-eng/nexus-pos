@@ -218,7 +218,7 @@ export default function NexusPOSDemoPage() {
     return OfflineDiscrepancyAuditor.generateBrief(latest, {
       item: mugItem,
       relatedEvents: serverEvents,
-      currencySymbol: '৳',
+      currencySymbol: '$',
     });
   }, [discrepancies, mugItem, serverEvents]);
 
@@ -427,7 +427,7 @@ export default function NexusPOSDemoPage() {
             </div>
             <div className="mt-2">
               <div className="text-lg font-black text-white font-mono tracking-tight drop-shadow-[0_0_8px_rgba(52,211,153,0.3)]">
-                ৳2,847.50
+                $2,847.50
               </div>
               <p className="text-[10px] text-zinc-500 font-mono mt-0.5">Authoritative Central Ledger</p>
             </div>
@@ -667,7 +667,7 @@ export default function NexusPOSDemoPage() {
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0 font-mono">
-                          <span className="text-[11px] text-zinc-400">৳{item.price.toFixed(2)}</span>
+                          <span className="text-[11px] text-zinc-400">${item.price.toFixed(2)}</span>
                           <span
                             className={`px-2.5 py-0.5 rounded text-xs font-bold ${
                               isNeg
@@ -725,7 +725,7 @@ export default function NexusPOSDemoPage() {
                             </span>
                             <span className="text-zinc-300 truncate">
                               {evt.type === 'SALE_COMMITTED'
-                                ? `Sale ৳${evt.payload.total.toFixed(2)} (${evt.payload.paymentMethod}) by ${actorName}`
+                                ? `Sale $${evt.payload.total.toFixed(2)} (${evt.payload.paymentMethod}) by ${actorName}`
                                 : evt.type === 'INVENTORY_INITIALIZED'
                                 ? `Init ${evt.payload.sku} (Stock: ${evt.payload.stock})`
                                 : evt.type === 'DISCREPANCY_FLAGGED'
