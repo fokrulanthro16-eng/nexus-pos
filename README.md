@@ -8,6 +8,7 @@
 [![Vitest](https://img.shields.io/badge/Tests-30%2F30%20Passed-brightgreen?style=flat&logo=vitest)](https://vitest.dev/)
 [![Offline First](https://img.shields.io/badge/Offline-100%25%20Guaranteed-orange?style=flat)](#)
 [![Security: WebCrypto](https://img.shields.io/badge/Security-WebCrypto%20Ed25519-indigo?style=flat)](#)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-nexus--pos--chi.vercel.app-00dfa2?style=flat&logo=vercel)](https://nexus-pos-chi.vercel.app)
 
 ---
 
