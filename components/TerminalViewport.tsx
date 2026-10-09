@@ -13,10 +13,16 @@ import {
   Printer,
   Sparkles,
   Zap,
-  CheckCircle2,
   Package,
   Search,
   X,
+  SlidersHorizontal,
+  Coffee,
+  Cookie,
+  CupSoda,
+  Award,
+  Activity,
+  CheckCircle2,
 } from 'lucide-react';
 import { offlineSmartSearch } from '@/lib/ai/local-search';
 import { NexusClientDatabase } from '@/lib/db/client-db';
@@ -64,6 +70,21 @@ export const INITIAL_PRODUCTS: Array<{
   { sku: 'LIMITED_EDITION_MUG', name: 'Limited Ceramic Mug', price: 18.0, stock: 1, category: 'Merchandise' },
 ];
 
+function getProductIcon(sku: string) {
+  switch (sku) {
+    case 'COLD_BREW_01':
+      return <Coffee className="w-4 h-4 text-cyan-400" />;
+    case 'CROISSANT_02':
+      return <Cookie className="w-4 h-4 text-amber-400" />;
+    case 'ORGANIC_OAT_03':
+      return <CupSoda className="w-4 h-4 text-emerald-400" />;
+    case 'LIMITED_EDITION_MUG':
+      return <Award className="w-4 h-4 text-purple-400" />;
+    default:
+      return <Package className="w-4 h-4 text-zinc-400" />;
+  }
+}
+
 export function TerminalViewport({
   terminalId,
   terminalName,
@@ -74,6 +95,10 @@ export function TerminalViewport({
   onSaleCommitted,
   registerHandle,
 }: TerminalViewportProps) {
+  const isCyan = badgeColor === 'cyan';
+  const pingLatency = isCyan ? '8ms' : '6ms';
+  const modeBadge = isCyan ? 'MODE: TERMINAL_ALPHA' : 'MODE: TERMINAL_BETA';
+
   // Local isolated client IndexedDB instance per terminal
   const db = useMemo(() => new NexusClientDatabase(`NexusPOS_${terminalId}`), [terminalId]);
   const clock = useMemo(() => new HybridLogicalClock(terminalId), [terminalId]);
@@ -130,7 +155,6 @@ export function TerminalViewport({
 
     async function initDb() {
       try {
-        // Safe database connection with 1500ms timeout
         await db.initClientDb(1500);
 
         const count = await db.inventory.count().catch(() => 0);
@@ -164,14 +188,12 @@ export function TerminalViewport({
     };
   }, [db, clock, terminalId, refreshLocalState]);
 
-  // Sync outbox queue with central reconciler
+  // Background synchronization trigger
   const triggerSync = useCallback(async () => {
-    if (networkState === 'OFFLINE') return;
     if (!onSyncPush) return;
 
     setIsSyncing(true);
     try {
-      // Simulate network latency / packet drops based on chaos state
       if (networkState === 'FLAKY_3G') {
         await new Promise((r) => setTimeout(r, 1500));
         if (Math.random() < 0.3) {
@@ -250,12 +272,11 @@ export function TerminalViewport({
 
   const clearCart = () => setCart([]);
 
-  // Subtotals and Tax
-  const cartSubtotal = useMemo(() => cart.reduce((acc, i) => acc + i.subtotal, 0), [cart]);
+  const cartSubtotal = useMemo(() => cart.reduce((acc, it) => acc + it.subtotal, 0), [cart]);
   const cartTax = useMemo(() => Number((cartSubtotal * 0.0825).toFixed(2)), [cartSubtotal]);
   const cartTotal = useMemo(() => Number((cartSubtotal + cartTax).toFixed(2)), [cartSubtotal, cartTax]);
 
-  // Instant Checkout Commit
+  // Instant Checkout
   const checkout = async (paymentMethod: PaymentMethod) => {
     if (cart.length === 0) return;
 
@@ -271,55 +292,44 @@ export function TerminalViewport({
       tax: cartTax,
       total: cartTotal,
       paymentMethod,
-      paymentDetails:
-        paymentMethod === 'CASH'
-          ? { amountTendered: Math.ceil(cartTotal / 10) * 10, changeDue: Number((Math.ceil(cartTotal / 10) * 10 - cartTotal).toFixed(2)) }
-          : { cardAuthCode: `AUTH_${Math.floor(100000 + Math.random() * 900000)}` },
     };
 
-    // Commit to local IndexedDB with instant zero-latency stock decrement
     const { event } = await db.commitSale(salePayload, clock, terminalId);
-
     const tEnd = performance.now();
-    const latency = Number((tEnd - tStart).toFixed(2));
-    setLastCommitLatency(latency);
+    setLastCommitLatency(Number((tEnd - tStart).toFixed(2)));
     setLastHlcString(HybridLogicalClock.toString(event.hlc));
     setLastSaleId(saleId);
 
-    // Generate binary ESC/POS thermal receipt bytes
     const receiptBytes = generateEscPosReceipt(salePayload, {
-      storeName: 'NEXUS COFFEE & BAKEHOUSE',
-      storeAddress: `POS CLUSTER // ${terminalName.toUpperCase()}`,
-      storeTaxId: 'NX-94810-77',
-      cashierName: terminalName,
+      storeName: 'NEXUS RETAIL LAB',
+      storeAddress: `${terminalName.toUpperCase()} POS TERMINAL`,
+      cashierName: `OPERATOR_${terminalId}`,
     });
-
     setActiveReceiptBytes(receiptBytes);
-    setCart([]);
+
+    clearCart();
     await refreshLocalState();
 
-    // Trigger celebratory particle animation
     try {
       confetti({
-        particleCount: 30,
-        spread: 60,
+        particleCount: 25,
+        spread: 50,
         origin: { y: 0.8 },
       });
     } catch {
-      // safe fallback if canvas is unavailable
+      // safe fallback
     }
 
     if (onSaleCommitted) {
       onSaleCommitted(event);
     }
 
-    // If online, kick off background sync automatically
     if (networkState === 'ONLINE') {
       setTimeout(() => triggerSync(), 50);
     }
   };
 
-  // Imperative handle for parent demo automated race condition runner
+  // Imperative handle for parent race runner
   const executeQuickSale = useCallback(
     async (sku: string, quantity: number, paymentMethod: PaymentMethod): Promise<SaleCommittedEvent | null> => {
       const item = inventory.find((i) => i.sku === sku);
@@ -390,33 +400,49 @@ export function TerminalViewport({
     }
   }, [registerHandle, executeQuickSale, triggerSync, resetCatalog]);
 
-  const borderColor = badgeColor === 'cyan' ? 'border-cyan-500/30' : 'border-purple-500/30';
-  const headerBg = badgeColor === 'cyan' ? 'bg-cyan-950/40 text-cyan-300' : 'bg-purple-950/40 text-purple-300';
-  const accentText = badgeColor === 'cyan' ? 'text-cyan-400' : 'text-purple-400';
+  const borderClass = isCyan
+    ? 'border-cyan-500/40 hover:border-cyan-400/60 shadow-[0_0_20px_-3px_rgba(6,182,212,0.18)]'
+    : 'border-purple-500/40 hover:border-purple-400/60 shadow-[0_0_20px_-3px_rgba(168,85,247,0.18)]';
+
+  const headerGradient = isCyan
+    ? 'bg-gradient-to-r from-cyan-950/50 via-[#0a1120] to-[#07090e] border-b border-cyan-500/30'
+    : 'bg-gradient-to-r from-purple-950/50 via-[#130d22] to-[#07090e] border-b border-purple-500/30';
+
+  const accentColor = isCyan ? 'text-cyan-400' : 'text-purple-400';
+  const badgeGlow = isCyan ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30' : 'bg-purple-500/10 text-purple-300 border-purple-500/30';
 
   return (
-    <div className={`flex flex-col h-full bg-zinc-950 border ${borderColor} rounded-2xl shadow-2xl overflow-hidden`}>
-      {/* Terminal Viewport Top Bar */}
-      <div className={`px-4 py-3 border-b border-zinc-800 flex items-center justify-between ${headerBg}`}>
+    <div className={`flex flex-col h-full bg-[#090d16] border ${borderClass} rounded-2xl overflow-hidden transition-all duration-300`}>
+      {/* 1. Terminal Header */}
+      <div className={`px-4 py-3 flex items-center justify-between ${headerGradient}`}>
         <div className="flex items-center gap-2.5">
-          <div className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-700">
-            <ShoppingBag className={`w-4 h-4 ${accentText}`} />
+          <div className="p-1.5 rounded-lg bg-black/50 border border-white/10">
+            <ShoppingBag className={`w-4 h-4 ${accentColor}`} />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-sm tracking-tight text-white">{terminalName}</span>
-              <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-zinc-900/80 border border-zinc-700/60 font-semibold">
-                NODE: {terminalId}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-extrabold text-sm tracking-tight text-white">{terminalName}</span>
+              {/* Online status badge */}
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                {networkState === 'ONLINE' ? 'ONLINE' : networkState === 'FLAKY_3G' ? 'FLAKY' : 'OFFLINE'}
+              </span>
+              {/* Terminal Mode badge */}
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded border font-semibold ${badgeGlow}`}>
+                {modeBadge}
               </span>
             </div>
           </div>
         </div>
 
-        {/* 0ms Zero-Latency Commit Monitor */}
+        {/* Live ping latency & zero-latency commit badge */}
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900/90 border border-zinc-800 text-[11px] font-mono">
-            <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-            <span className="text-zinc-400">Latency:</span>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/60 border border-white/10 text-[11px] font-mono">
+            <Activity className="w-3 h-3 text-cyan-400" />
+            <span className="text-zinc-400">Ping:</span>
+            <span className="font-bold text-cyan-300">{pingLatency}</span>
+            <span className="text-zinc-600">&bull;</span>
+            <Zap className="w-3 h-3 text-amber-400 fill-amber-400" />
             <span className="font-bold text-emerald-400">
               {lastCommitLatency !== null ? `${lastCommitLatency}ms` : '0ms'} [LOCAL]
             </span>
@@ -424,8 +450,8 @@ export function TerminalViewport({
         </div>
       </div>
 
-      {/* Chaos Mesh Network Controller */}
-      <div className="p-3 border-b border-zinc-900 bg-zinc-900/30">
+      {/* 2. Chaos Mesh Bar */}
+      <div className="p-3 border-b border-white/5 bg-black/20">
         <ChaosController
           terminalName={terminalName}
           networkState={networkState}
@@ -433,25 +459,26 @@ export function TerminalViewport({
           pendingOutboxCount={pendingOutboxCount}
           onForceSync={triggerSync}
           isSyncing={isSyncing}
+          themeColor={badgeColor}
           lastSyncTime={lastSyncTime}
         />
       </div>
 
-      {/* Main POS Split Layout: Products (Left) + Cart (Right) */}
+      {/* 3. Catalog & Cart Split View */}
       <div className="flex-1 grid grid-cols-1 md:grid-cols-12 min-h-0 overflow-hidden">
-        {/* Products Grid (7 cols) */}
-        <div className="md:col-span-7 p-3.5 overflow-y-auto border-r border-zinc-800/80 flex flex-col gap-3">
+        {/* Left: Local Catalog (7 cols) */}
+        <div className="md:col-span-7 p-3.5 overflow-y-auto border-r border-white/5 flex flex-col gap-3">
           {/* Header & Status */}
           <div className="flex items-center justify-between text-xs text-zinc-400 px-1">
             <div className="flex items-center gap-1.5 font-medium">
               <Package className="w-3.5 h-3.5 text-zinc-400" />
               <span>Local Catalog &bull; Materialized Stock</span>
             </div>
-            <span className="text-[11px] font-mono text-zinc-500">IndexedDB Synced</span>
+            <span className="text-[10px] font-mono text-zinc-500">IndexedDB Zero-Latency</span>
           </div>
 
-          {/* Offline Smart AI Search Input */}
-          <div className="relative">
+          {/* Search Input with Filter Icon */}
+          <div className="relative flex items-center">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-500">
               <Search className="w-3.5 h-3.5" />
             </div>
@@ -459,18 +486,22 @@ export function TerminalViewport({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Offline AI Search (e.g. 'kroisant', 'nitro', 'mug')..."
-              className="w-full pl-9 pr-8 py-2 bg-zinc-900 border border-zinc-700/80 rounded-xl text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 transition shadow-inner font-sans"
+              placeholder="Search catalog or phonetic requests (e.g. 'kroisant', 'nitro', 'mug')..."
+              className="w-full pl-9 pr-9 py-2 bg-black/50 border border-white/10 rounded-xl text-xs text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 transition shadow-inner font-sans"
             />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-zinc-400 hover:text-white"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+            <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+              {searchQuery ? (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="text-zinc-400 hover:text-white"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              ) : (
+                <SlidersHorizontal className="w-3 h-3 text-zinc-500 pointer-events-none" />
+              )}
+            </div>
           </div>
 
           {/* Search telemetry pill when active */}
@@ -480,7 +511,7 @@ export function TerminalViewport({
                 <Sparkles className="w-3 h-3 text-cyan-400" />
                 <span>Found {searchResults.length} matching items</span>
               </span>
-              <span className="text-cyan-400 font-mono text-[10px]">Zero-Cloud Edge AI</span>
+              <span className="text-cyan-400 font-mono text-[10px]">Zero-Cloud AI Matched</span>
             </div>
           )}
 
@@ -488,8 +519,8 @@ export function TerminalViewport({
           {searchResults.length === 0 ? (
             <div className="py-8 text-center text-zinc-500 text-xs flex flex-col items-center gap-1.5">
               <Search className="w-6 h-6 stroke-1 text-zinc-600" />
-              <span>No items matched "{searchQuery}"</span>
-              <span className="text-[10px] text-zinc-600">Try phonetic phrases like "kroisant" or "nitro"</span>
+              <span>No items matched &quot;{searchQuery}&quot;</span>
+              <span className="text-[10px] text-zinc-600">Try phonetic keywords like &quot;kroisant&quot;</span>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -497,65 +528,96 @@ export function TerminalViewport({
                 const item = res.item;
                 const isLowStock = item.stock <= item.reorderThreshold && item.stock > 0;
                 const isOutOrNegative = item.stock <= 0;
+                const inCartQty = cart.find((c) => c.sku === item.sku)?.quantity || 0;
 
                 return (
                   <div
                     key={item.sku}
-                    onClick={() => addToCart(item)}
-                    className={`group relative p-3 rounded-xl border text-left cursor-pointer transition-all flex flex-col justify-between ${
+                    className={`group relative p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
                       isOutOrNegative
-                        ? 'bg-rose-950/20 border-rose-500/40 hover:border-rose-400'
+                        ? 'bg-rose-950/25 border-rose-500/40 hover:border-rose-400 shadow-[0_0_15px_-4px_rgba(244,63,94,0.3)]'
                         : isLowStock
-                        ? 'bg-amber-950/20 border-amber-500/30 hover:border-amber-400'
-                        : 'bg-zinc-900/80 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/80'
+                        ? 'bg-amber-950/25 border-amber-500/35 hover:border-amber-400'
+                        : 'glass-card border-white/5 hover:border-white/15 hover:bg-white/[0.04]'
                     }`}
                   >
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-start justify-between gap-1">
-                        <span className="font-semibold text-xs text-zinc-100 group-hover:text-white line-clamp-1">
-                          {item.name}
-                        </span>
-                        <span className="font-mono text-xs font-bold text-zinc-200">
-                          ${item.price.toFixed(2)}
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2 truncate">
+                          <div className="p-1.5 rounded-lg bg-black/60 border border-white/5 shrink-0">
+                            {getProductIcon(item.sku)}
+                          </div>
+                          <div className="truncate">
+                            <span className="font-semibold text-xs text-zinc-100 group-hover:text-white truncate block">
+                              {item.name}
+                            </span>
+                            <span className="text-[10px] text-zinc-500 uppercase font-mono">{item.sku}</span>
+                          </div>
+                        </div>
+
+                        {/* Price in Taka ৳ */}
+                        <span className="font-mono text-xs font-extrabold text-white shrink-0">
+                          ৳{item.price.toFixed(2)}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-[10px] text-zinc-500 uppercase font-mono">{item.sku}</span>
-                        {/* Instant Offline AI Match Badge */}
-                        {searchQuery && res.isAiMatched && (
-                          <span
-                            title={res.matchReason}
-                            className="text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 flex items-center gap-1 shadow-sm"
-                          >
+
+                      {/* AI match confidence tag */}
+                      {searchQuery && res.isAiMatched && (
+                        <div className="flex items-center gap-1">
+                          <span className="text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 flex items-center gap-1 shadow-sm">
                             <Sparkles className="w-2.5 h-2.5 text-cyan-400" />
                             AI Matched ({Math.round(res.score * 100)}%)
                           </span>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
 
-                    <div className="mt-3 flex items-center justify-between pt-2 border-t border-zinc-800/60 text-[11px]">
+                    {/* Stock pill & Cart increment/decrement buttons */}
+                    <div className="mt-3 flex items-center justify-between pt-2 border-t border-white/5 text-[11px]">
                       <div className="flex items-center gap-1">
-                        <span className="text-zinc-500">Stock:</span>
                         <span
-                          className={`font-mono font-bold px-1.5 py-0.2 rounded text-[11px] ${
+                          className={`font-mono font-bold px-2 py-0.5 rounded text-[10px] uppercase ${
                             isOutOrNegative
-                              ? 'text-rose-400 bg-rose-500/10'
+                              ? 'text-rose-300 bg-rose-500/20 border border-rose-500/40 animate-pulse'
                               : isLowStock
-                              ? 'text-amber-400 bg-amber-500/10'
-                              : 'text-emerald-400 bg-emerald-500/10'
+                              ? 'text-amber-300 bg-amber-500/20 border border-amber-500/30'
+                              : 'text-emerald-300 bg-emerald-500/15 border border-emerald-500/30'
                           }`}
                         >
-                          {item.stock}
+                          {isOutOrNegative ? `${item.stock} DEFICIT` : `${item.stock} in stock`}
                         </span>
                       </div>
 
-                      <button
-                        type="button"
-                        className="p-1 rounded-md bg-zinc-800 group-hover:bg-cyan-600 text-zinc-400 group-hover:text-white transition"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                      </button>
+                      {/* Increment / Decrement Quantity Buttons */}
+                      <div className="flex items-center gap-1">
+                        {inCartQty > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => updateCartQuantity(item.sku, -1)}
+                            className="p-1 rounded-md bg-zinc-900 border border-zinc-700 hover:bg-rose-900/50 hover:text-rose-300 text-zinc-300 transition"
+                            title="Decrement cart"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                        )}
+                        {inCartQty > 0 && (
+                          <span className="font-mono text-xs font-bold text-white px-1">
+                            {inCartQty}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => addToCart(item)}
+                          className={`p-1 rounded-md transition flex items-center gap-1 ${
+                            isCyan
+                              ? 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-[0_0_10px_rgba(6,182,212,0.3)]'
+                              : 'bg-purple-600 hover:bg-purple-500 text-white shadow-[0_0_10px_rgba(168,85,247,0.3)]'
+                          }`}
+                          title="Add to cart"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -564,14 +626,14 @@ export function TerminalViewport({
           )}
         </div>
 
-        {/* Active Cart & Instant Checkout Tray (5 cols) */}
-        <div className="md:col-span-5 p-3.5 flex flex-col justify-between bg-zinc-900/40 overflow-hidden">
+        {/* Right: Active Cart Tray (5 cols) */}
+        <div className="md:col-span-5 p-3.5 flex flex-col justify-between bg-black/40 overflow-hidden">
           {/* Cart Header */}
-          <div className="flex items-center justify-between pb-2.5 border-b border-zinc-800 text-xs">
+          <div className="flex items-center justify-between pb-2.5 border-b border-white/5 text-xs">
             <span className="font-semibold text-zinc-200 flex items-center gap-1.5">
               <span>Active Cart</span>
-              <span className="px-1.5 py-0.5 rounded-full bg-zinc-800 text-zinc-400 font-mono text-[10px]">
-                {cart.length}
+              <span className="px-2 py-0.5 rounded-full bg-zinc-900 border border-white/10 text-zinc-300 font-mono text-[10px]">
+                {cart.length} {cart.length === 1 ? 'item' : 'items'}
               </span>
             </span>
             {cart.length > 0 && (
@@ -598,17 +660,17 @@ export function TerminalViewport({
               cart.map((item) => (
                 <div
                   key={item.sku}
-                  className="p-2 rounded-lg bg-zinc-950/80 border border-zinc-800/80 flex items-center justify-between text-xs"
+                  className="p-2 rounded-lg bg-zinc-900/60 border border-white/5 flex items-center justify-between text-xs"
                 >
                   <div className="flex flex-col truncate pr-2">
                     <span className="font-medium text-zinc-200 truncate">{item.name}</span>
-                    <span className="text-[10px] font-mono text-zinc-500">
-                      ${item.price.toFixed(2)} each
+                    <span className="text-[10px] font-mono text-zinc-400">
+                      ৳{item.price.toFixed(2)} each
                     </span>
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
-                    <div className="flex items-center bg-zinc-900 border border-zinc-700 rounded-md">
+                    <div className="flex items-center bg-black/60 border border-white/10 rounded-md">
                       <button
                         onClick={() => updateCartQuantity(item.sku, -1)}
                         className="p-1 hover:text-rose-400 text-zinc-400 transition"
@@ -625,8 +687,8 @@ export function TerminalViewport({
                         <Plus className="w-3 h-3" />
                       </button>
                     </div>
-                    <span className="font-mono font-bold text-zinc-100 min-w-12 text-right">
-                      ${item.subtotal.toFixed(2)}
+                    <span className="font-mono font-bold text-zinc-100 min-w-14 text-right">
+                      ৳{item.subtotal.toFixed(2)}
                     </span>
                   </div>
                 </div>
@@ -635,19 +697,21 @@ export function TerminalViewport({
           </div>
 
           {/* Checkout Totals & Buttons */}
-          <div className="pt-2.5 border-t border-zinc-800 flex flex-col gap-2">
+          <div className="pt-2.5 border-t border-white/5 flex flex-col gap-2">
             <div className="space-y-1 text-xs">
               <div className="flex justify-between text-zinc-400 text-[11px]">
                 <span>Subtotal</span>
-                <span className="font-mono">${cartSubtotal.toFixed(2)}</span>
+                <span className="font-mono">৳{cartSubtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-zinc-400 text-[11px]">
                 <span>Tax (8.25%)</span>
-                <span className="font-mono">${cartTax.toFixed(2)}</span>
+                <span className="font-mono">৳{cartTax.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-zinc-100 font-bold text-sm pt-1 border-t border-zinc-800/60">
+              <div className="flex justify-between text-zinc-100 font-bold text-sm pt-1 border-t border-white/10">
                 <span>Total Due</span>
-                <span className="font-mono text-emerald-400">${cartTotal.toFixed(2)}</span>
+                <span className="font-mono text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.4)]">
+                  ৳{cartTotal.toFixed(2)}
+                </span>
               </div>
             </div>
 
@@ -657,7 +721,7 @@ export function TerminalViewport({
                 type="button"
                 disabled={cart.length === 0}
                 onClick={() => checkout('CASH')}
-                className="flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white font-semibold text-xs shadow-md transition"
+                className="flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-xs shadow-[0_0_15px_rgba(16,185,129,0.25)] transition active:scale-95"
               >
                 <Banknote className="w-4 h-4" />
                 <span>Cash Checkout</span>
@@ -667,7 +731,11 @@ export function TerminalViewport({
                 type="button"
                 disabled={cart.length === 0}
                 onClick={() => checkout('CARD')}
-                className="flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white font-semibold text-xs shadow-md transition"
+                className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-xl text-white font-semibold text-xs transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${
+                  isCyan
+                    ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 shadow-[0_0_15px_rgba(6,182,212,0.25)]'
+                    : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-[0_0_15px_rgba(168,85,247,0.25)]'
+                }`}
               >
                 <CreditCard className="w-4 h-4" />
                 <span>Card Checkout</span>
@@ -677,10 +745,10 @@ export function TerminalViewport({
         </div>
       </div>
 
-      {/* Bottom Telemetry Bar */}
-      <div className="px-3 py-2 bg-zinc-950 border-t border-zinc-900 flex items-center justify-between text-[11px] font-mono text-zinc-500">
+      {/* 4. Bottom Telemetry Bar */}
+      <div className="px-3 py-2 bg-black/60 border-t border-white/5 flex items-center justify-between text-[11px] font-mono text-zinc-500">
         <div className="flex items-center gap-2 truncate">
-          <Clock className="w-3.5 h-3.5 text-zinc-600" />
+          <Clock className="w-3.5 h-3.5 text-zinc-500" />
           <span className="truncate">HLC: {lastHlcString}</span>
         </div>
         {lastSaleId && (
@@ -690,7 +758,7 @@ export function TerminalViewport({
                 setActiveReceiptBytes(activeReceiptBytes);
               }
             }}
-            className="text-cyan-400 hover:underline flex items-center gap-1 shrink-0"
+            className="text-cyan-400 hover:underline flex items-center gap-1 shrink-0 font-medium"
           >
             <Printer className="w-3 h-3" />
             Receipt Ready
