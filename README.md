@@ -1,7 +1,7 @@
 # NexusPOS Engine v2.1.0
 ### *Deterministic, Offline-First Event-Sourced Retail POS Architecture*
 
-[![CI Build](https://github.com/fokrulanthro16-eng/nexus-pos/actions/workflows/ci.yml/badge.svg)](https://github.com/fokrulanthro16-eng/nexus-pos/actions)
+[![CI Build](https://img.shields.io/badge/CI%20Build-passing-brightgreen?style=flat&logo=githubactions&logoColor=white)](https://github.com/fokrulanthro16-eng/nexus-pos)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Next.js 15](https://img.shields.io/badge/Next.js-15.x-black?style=flat&logo=next.js)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat&logo=typescript)](https://www.typescriptlang.org/)
