@@ -42,3 +42,5 @@ next-env.d.ts
 
 # github workflows (push via gh auth refresh -s workflow or web)
 .github/
+
+.vercel
