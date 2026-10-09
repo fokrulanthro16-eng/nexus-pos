@@ -142,3 +142,42 @@ NexusPOS is built from first principles as an **event-sourced, deterministic, of
 
 * **Edge ML Reorder Forecasting:**
   Running embedded WebAssembly ONNX machine learning models to forecast inventory depletion right at the cash register.
+
+---
+
+## 🎬 3-Minute Video Walkthrough Script (Judge-Winning Pitch)
+
+### [0:00 – 0:40] The Hook & The Retail Double-Spend Problem
+* **Screen View:** Full Screen `http://localhost:3000` showing the dual-terminal dashboard.
+* **Voiceover:**
+  > *"Every retailer dreads one thing during peak shopping hours: the network dropping. Traditional cloud POS systems freeze up, and cashiers are forced to turn away customers holding physical merchandise. But if you allow offline checkouts naively, two disconnected cashiers will sell the same last item, creating silent ledger corruption and inventory chaos.*
+  >
+  > *This is **NexusPOS** — a deterministic, offline-first Point of Sale engine engineered with Hybrid Logical Clocks, WebCrypto Non-Repudiation, and a native ESC/POS hardware bridge."*
+
+### [0:41 – 1:25] 0ms Commit & Low-Level Hardware Hex Telemetry
+* **Screen Action:** On Terminal Alpha, search for *"Cold Brew"*, add to cart, and click **"Pay with Cash"**. Instantly point cursor to the `0ms [LOCAL]` latency badge. Then open the printer tray and switch to **`Raw Hex [Judge View]`**.
+* **Voiceover:**
+  > *"Notice what happens when I checkout on Terminal Alpha: the transaction commits in less than one millisecond directly to IndexedDB. No spinner, no network wait. Every event is cryptographically signed using the browser's native WebCrypto API with ECDSA P-256 keys, guaranteeing that offline sales cannot be tampered with in browser DevTools.*
+  >
+  > *Down here is our authentic ESC/POS micro-printer emulator. Switching to the Judge View, you can inspect the exact binary byte stream being spooled to the printer — complete with initialization `1B 40`, alignment `1B 61`, and paper cut `1D 56 01` commands. We even built paper-jam simulation with an idempotent reprint buffer that prevents duplicate financial ledger entries."*
+
+### [1:26 – 2:15] Staging the Distributed Twin-Terminal Race Condition
+* **Screen Action:** Click the glowing orange button: **"Stage Twin-Terminal Race Condition"**. Follow the step-by-step progress pill as both terminals disconnect into an offline partition and sell the last *Limited Ceramic Mug*.
+* **Voiceover:**
+  > *"Now let's test the hardest problem in distributed retail: a concurrent race condition during a complete network blackout.*
+  >
+  > *Watch our automated Chaos Mesh runner: Central warehouse has exactly 1 Limited Ceramic Mug left in stock. Both Terminal Alpha and Beta lose connection simultaneously. Customer A buys the mug on Alpha; Customer B buys the same mug on Beta offline.*
+  >
+  > *Now the network recovers! Instead of crashing, dropping a paying customer, or silently overwriting data, NexusPOS implements the AP principle of the CAP Theorem: both physical sales are authoritatively honored, driving the central stock into a negative deficit of `-1 DEFICIT`."*
+
+### [2:16 – 2:45] Autonomous Edge AI Auditor Diagnosis
+* **Screen Action:** Scroll smoothly down to the **Autonomous Edge AI Auditor** panel highlighting the red discrepancy alert and root-cause brief.
+* **Voiceover:**
+  > *"Directly beneath the central ledger, our embedded Edge AI Auditor immediately analyzes the out-of-order Hybrid Logical Clock trace. It pinpoints the exact millisecond and logical counter where the split-brain occurred, calculates the fiscal variance, and automatically issues an inventory backorder voucher to fulfillment without requiring manual manager triage."*
+
+### [2:46 – 3:00] Production Verification & Wrap-Up
+* **Screen Action:** Switch briefly to the terminal displaying `npm test` with `30/30 passed` across 8 suites, then show the GitHub repository.
+* **Voiceover:**
+  > *"NexusPOS is fortified with 30 passing unit tests covering monotonic HLC clocks, WebCrypto signatures, and event log compaction.*
+  >
+  > *Zero dropped sales. Zero cloud dependencies at the checkout line. Mathematically deterministic retail consensus. That is NexusPOS. Thank you!"*
